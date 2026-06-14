@@ -1,0 +1,89 @@
+name: Render Video
+
+on:
+  push:
+    branches:
+      - claude/automated-video-remotion-9m618e
+    paths:
+      - 'scripts/**'
+  workflow_dispatch:
+    inputs:
+      script_content:
+        description: 'Paste your full script here'
+        required: true
+        type: string
+      output_name:
+        description: 'Output filename (no spaces, no .mp4)'
+        required: false
+        default: 'my-video'
+        type: string
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('package.json') }}
+          restore-keys: ${{ runner.os }}-npm-
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Ensure Chrome is available for Remotion
+        run: npx remotion browser ensure
+
+      - name: Write API keys to .env
+        run: |
+          {
+            echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}"
+            echo "PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}"
+            echo "FREESOUND_API_KEY=${{ secrets.FREESOUND_API_KEY }}"
+            echo "PIXABAY_API_KEY=${{ secrets.PIXABAY_API_KEY }}"
+          } > .env
+
+      # --- Manual trigger path ---
+      - name: Write dispatched script to file
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SCRIPT_CONTENT: ${{ github.event.inputs.script_content }}
+        run: |
+          mkdir -p scripts
+          printf '%s' "$SCRIPT_CONTENT" > "scripts/${{ github.event.inputs.output_name }}.txt"
+
+      - name: Run pipeline (manual trigger)
+        if: github.event_name == 'workflow_dispatch'
+        run: npm start "scripts/${{ github.event.inputs.output_name }}.txt"
+
+      # --- Push trigger path ---
+      - name: Detect pushed script file
+        if: github.event_name == 'push'
+        id: detect
+        run: |
+          FILE=$(git diff-tree --no-commit-id -r --name-only ${{ github.sha }} -- 'scripts/' | grep '\.txt$' | head -1)
+          echo "script_file=${FILE:-scripts/example-script.txt}" >> "$GITHUB_OUTPUT"
+
+      - name: Run pipeline (push trigger)
+        if: github.event_name == 'push'
+        run: npm start "${{ steps.detect.outputs.script_file }}"
+
+      # --- Upload output ---
+      - name: Upload rendered video
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-video-${{ github.run_number }}
+          path: output/*.mp4
+          retention-days: 7
+          if-no-files-found: error
