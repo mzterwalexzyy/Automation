@@ -1,0 +1,35 @@
+{
+  "name": "auto-video-remotion",
+  "version": "1.0.0",
+  "description": "Fully automated script-to-video pipeline using Remotion",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "ts-node src/index.ts",
+    "build": "tsc",
+    "studio": "remotion studio src/remotion/Root.tsx",
+    "render:preview": "remotion render src/remotion/Root.tsx MainVideo output/preview.mp4",
+    "dev": "ts-node-dev --respawn src/index.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.27.0",
+    "@remotion/bundler": "^4.0.0",
+    "@remotion/cli": "^4.0.0",
+    "@remotion/renderer": "^4.0.0",
+    "axios": "^1.7.0",
+    "dotenv": "^16.4.0",
+    "remotion": "^4.0.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "ts-node": "^10.9.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
