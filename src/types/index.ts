@@ -2,8 +2,10 @@ export interface ScriptScene {
   id: string;
   index: number;
   narration: string;
-  visualDescription: string;
+  startSeconds: number;
+  endSeconds: number;
   durationSeconds: number;
+  visualDescription: string;
 }
 
 export interface ParsedScript {
@@ -40,7 +42,7 @@ export interface MediaAsset {
 
 export interface SceneAssets {
   sceneId: string;
-  background: MediaAsset;
+  backgrounds: MediaAsset[];
   sfx: MediaAsset[];
 }
 
@@ -52,11 +54,11 @@ export interface VideoAssetBundle {
 export interface RemotionSceneData {
   id: string;
   narration: string;
-  visualDescription: string;
   durationFrames: number;
-  backgroundPath: string;
-  backgroundType: 'video' | 'image';
+  backgroundPaths: string[];
+  backgroundTypes: Array<'video' | 'image'>;
   sfxPaths: string[];
+  mood: string;
 }
 
 export interface RemotionVideoData {
@@ -64,5 +66,6 @@ export interface RemotionVideoData {
   fps: number;
   scenes: RemotionSceneData[];
   bgmPath: string;
+  voPath: string;
   totalFrames: number;
 }

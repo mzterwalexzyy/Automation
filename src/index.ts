@@ -4,8 +4,15 @@ import path from 'path';
 import { parseScript } from './script/parser';
 import { analyzeMood } from './mood/analyzer';
 import { buildAssetBundle } from './pipeline/orchestrator';
-import { renderVideo } from './remotion/render';
+import { bundleProject, renderFormat } from './remotion/render';
 import { RemotionVideoData, RemotionSceneData } from './types';
+
+function findVoiceover(): string {
+  const dir = path.join(process.cwd(), 'voiceover');
+  if (!fs.existsSync(dir)) return '';
+  const file = fs.readdirSync(dir).find((f) => /\.(mp3|wav|aac|m4a)$/i.test(f));
+  return file ? path.join(dir, file) : '';
+}
 
 async function main(): Promise<void> {
   const scriptPath = process.argv[2];
@@ -16,55 +23,71 @@ async function main(): Promise<void> {
   }
 
   const scriptText = fs.readFileSync(path.resolve(scriptPath), 'utf-8');
-  console.log(`\n🎬 auto-video-remotion`);
-  console.log(`${'─'.repeat(40)}`);
+
+  console.log('\n🎬 auto-video-remotion');
+  console.log('─'.repeat(44));
 
   console.log('\n📝 Step 1/4 — Parsing script...');
   const parsedScript = await parseScript(scriptText);
-  console.log(`   ✅ "${parsedScript.title}" — ${parsedScript.scenes.length} scenes, ${parsedScript.totalDurationSeconds}s total`);
+  console.log(
+    `   ✅ "${parsedScript.title}" — ${parsedScript.scenes.length} scenes, ${parsedScript.totalDurationSeconds}s total`
+  );
 
   console.log('\n🎭 Step 2/4 — Analyzing mood...');
   const mood = await analyzeMood(parsedScript);
-  console.log(`   ✅ Mood: ${mood.mood} | Energy: ${mood.energy} | Tempo: ${mood.tempo}`);
+  console.log(`   ✅ ${mood.mood} | ${mood.energy} energy | ${mood.tempo} tempo`);
 
   console.log('\n📥 Step 3/4 — Sourcing & downloading assets...');
+  const voPath = findVoiceover();
+  if (voPath) {
+    console.log(`   🎤 Voiceover found: ${path.basename(voPath)}`);
+  } else {
+    console.log('   ℹ️  No voiceover in voiceover/ — BGM only');
+  }
   const assets = await buildAssetBundle(parsedScript, mood);
   console.log(`   ✅ Assets ready for ${parsedScript.scenes.length} scenes`);
 
-  console.log('\n🎥 Step 4/4 — Composing & rendering video...');
   const FPS = 30;
-
   const scenes: RemotionSceneData[] = parsedScript.scenes.map((scene) => {
     const sceneAssets = assets.scenes.find((a) => a.sceneId === scene.id);
     if (!sceneAssets) throw new Error(`Missing assets for ${scene.id}`);
+    const sceneMood = mood.scenes.find((m) => m.sceneId === scene.id);
     return {
       id: scene.id,
       narration: scene.narration,
-      visualDescription: scene.visualDescription,
       durationFrames: Math.round(scene.durationSeconds * FPS),
-      backgroundPath: sceneAssets.background.localPath,
-      backgroundType: sceneAssets.background.type as 'video' | 'image',
+      backgroundPaths: sceneAssets.backgrounds.map((b) => b.localPath),
+      backgroundTypes: sceneAssets.backgrounds.map((b) => b.type as 'video' | 'image'),
       sfxPaths: sceneAssets.sfx.map((s) => s.localPath).filter(Boolean),
+      mood: sceneMood?.mood ?? mood.mood,
     };
   });
 
   const totalFrames = scenes.reduce((sum, s) => sum + s.durationFrames, 0);
-
   const videoData: RemotionVideoData = {
     title: parsedScript.title,
     fps: FPS,
     scenes,
     bgmPath: assets.bgm.localPath,
+    voPath,
     totalFrames,
   };
 
+  console.log('\n🎥 Step 4/4 — Rendering video...');
   const safeName = parsedScript.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-  const outputPath = path.join(process.cwd(), 'output', `${safeName}.mp4`);
 
-  await renderVideo(videoData, outputPath);
+  const bundled = await bundleProject();
 
-  console.log(`\n${'─'.repeat(40)}`);
-  console.log(`✅ Done! Video saved to:\n   ${outputPath}\n`);
+  const out16x9 = path.join(process.cwd(), 'output', `${safeName}-16x9.mp4`);
+  const out9x16 = path.join(process.cwd(), 'output', `${safeName}-9x16.mp4`);
+
+  await renderFormat(bundled, videoData, out16x9, '16x9');
+  await renderFormat(bundled, videoData, out9x16, '9x16');
+
+  console.log('\n' + '─'.repeat(44));
+  console.log('✅ Done!\n');
+  console.log(`   📺 16:9 (YouTube):       ${out16x9}`);
+  console.log(`   📱 9:16  (Reels/Shorts): ${out9x16}\n`);
 }
 
 main().catch((err) => {
