@@ -7,6 +7,7 @@ import {
   interpolate,
   useCurrentFrame,
   useVideoConfig,
+  staticFile,
 } from 'remotion';
 import { RemotionSceneData } from '../../types';
 
@@ -29,11 +30,11 @@ const MOOD_FILTERS: Record<string, string> = {
 };
 
 const BLUE_TINT: Record<string, string> = {
-  dramatic:   'rgba(8, 20, 70, 0.28)',
-  tense:      'rgba(5, 12, 60, 0.35)',
-  mysterious: 'rgba(10, 18, 75, 0.32)',
+  dramatic:    'rgba(8, 20, 70, 0.28)',
+  tense:       'rgba(5, 12, 60, 0.35)',
+  mysterious:  'rgba(10, 18, 75, 0.32)',
   melancholic: 'rgba(15, 25, 60, 0.22)',
-  default:    'rgba(8, 18, 55, 0.15)',
+  default:     'rgba(8, 18, 55, 0.15)',
 };
 
 const WORDS_PER_CHUNK = 7;
@@ -45,6 +46,12 @@ function buildCaptionChunks(narration: string): string[][] {
     chunks.push(words.slice(i, i + WORDS_PER_CHUNK));
   }
   return chunks.length > 0 ? chunks : [[]];
+}
+
+function toSrc(p: string): string {
+  if (!p) return p;
+  if (p.startsWith('http://') || p.startsWith('https://')) return p;
+  return staticFile(p);
 }
 
 export const SceneComponent: React.FC<Props> = ({ scene, fps }) => {
@@ -95,13 +102,13 @@ export const SceneComponent: React.FC<Props> = ({ scene, fps }) => {
       <AbsoluteFill style={{ transform: `scale(${scale})`, overflow: 'hidden', filter: colorFilter }}>
         {currentType === 'video' && currentPath ? (
           <OffthreadVideo
-            src={currentPath}
+            src={toSrc(currentPath)}
             loop
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
         ) : currentPath ? (
           <Img
-            src={currentPath}
+            src={toSrc(currentPath)}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
         ) : (
@@ -170,7 +177,7 @@ export const SceneComponent: React.FC<Props> = ({ scene, fps }) => {
 
       {/* Scene SFX */}
       {scene.sfxPaths.map((src, i) => (
-        <Audio key={i} src={src} volume={0.55} />
+        <Audio key={i} src={toSrc(src)} volume={0.55} />
       ))}
     </AbsoluteFill>
   );

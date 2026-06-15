@@ -7,17 +7,27 @@ import { buildAssetBundle } from './pipeline/orchestrator';
 import { bundleProject, renderFormat } from './remotion/render';
 import { RemotionVideoData, RemotionSceneData } from './types';
 
-function findVoiceover(): string {
-  const dir = path.join(process.cwd(), 'voiceover');
-  if (!fs.existsSync(dir)) return '';
-  const file = fs.readdirSync(dir).find((f) => /\.(mp3|wav|aac|m4a)$/i.test(f));
-  return file ? path.join(dir, file) : '';
+const publicDir = path.join(process.cwd(), 'public');
+
+function toPublicRelative(p: string): string {
+  if (!p) return '';
+  if (p.startsWith('http://') || p.startsWith('https://')) return p;
+  const rel = path.relative(publicDir, p);
+  if (rel.startsWith('..')) return '';
+  return rel;
 }
 
-function toFileUrl(p: string): string {
-  if (!p) return p;
-  if (p.startsWith('file://') || p.startsWith('http://') || p.startsWith('https://')) return p;
-  return p.startsWith('/') ? `file://${p}` : p;
+function findVoiceover(): string {
+  // Copy voiceover to public so Remotion can serve it via HTTP
+  const srcDir = path.join(process.cwd(), 'voiceover');
+  if (!fs.existsSync(srcDir)) return '';
+  const file = fs.readdirSync(srcDir).find((f) => /\.(mp3|wav|aac|m4a)$/i.test(f));
+  if (!file) return '';
+  const destDir = path.join(publicDir, 'assets', 'vo');
+  fs.mkdirSync(destDir, { recursive: true });
+  const destPath = path.join(destDir, file);
+  fs.copyFileSync(path.join(srcDir, file), destPath);
+  return destPath;
 }
 
 async function main(): Promise<void> {
@@ -44,9 +54,9 @@ async function main(): Promise<void> {
   console.log(`   ✅ ${mood.mood} | ${mood.energy} energy | ${mood.tempo} tempo`);
 
   console.log('\n📥 Step 3/4 — Sourcing & downloading assets...');
-  const voPath = findVoiceover();
-  if (voPath) {
-    console.log(`   🎤 Voiceover found: ${path.basename(voPath)}`);
+  const voAbsPath = findVoiceover();
+  if (voAbsPath) {
+    console.log(`   🎤 Voiceover found: ${path.basename(voAbsPath)}`);
   } else {
     console.log('   ℹ️  No voiceover in voiceover/ — BGM only');
   }
@@ -62,9 +72,9 @@ async function main(): Promise<void> {
       id: scene.id,
       narration: scene.narration,
       durationFrames: Math.round(scene.durationSeconds * FPS),
-      backgroundPaths: sceneAssets.backgrounds.map((b) => toFileUrl(b.localPath)),
+      backgroundPaths: sceneAssets.backgrounds.map((b) => toPublicRelative(b.localPath)).filter(Boolean),
       backgroundTypes: sceneAssets.backgrounds.map((b) => b.type as 'video' | 'image'),
-      sfxPaths: sceneAssets.sfx.map((s) => toFileUrl(s.localPath)).filter(Boolean),
+      sfxPaths: sceneAssets.sfx.map((s) => toPublicRelative(s.localPath)).filter(Boolean),
       mood: sceneMood?.mood ?? mood.mood,
     };
   });
@@ -74,8 +84,8 @@ async function main(): Promise<void> {
     title: parsedScript.title,
     fps: FPS,
     scenes,
-    bgmPath: toFileUrl(assets.bgm.localPath),
-    voPath: toFileUrl(voPath),
+    bgmPath: toPublicRelative(assets.bgm.localPath),
+    voPath: toPublicRelative(voAbsPath),
     totalFrames,
   };
 
