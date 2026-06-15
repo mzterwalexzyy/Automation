@@ -32,6 +32,10 @@ export const RemotionRoot: React.FC = () => (
       width={1920}
       height={1080}
       defaultProps={defaultProps}
+      calculateMetadata={({ props }) => ({
+        durationInFrames: props.totalFrames,
+        fps: props.fps,
+      })}
     />
     <Composition
       id="MainVideo-9x16"
@@ -41,6 +45,10 @@ export const RemotionRoot: React.FC = () => (
       width={1080}
       height={1920}
       defaultProps={defaultProps}
+      calculateMetadata={({ props }) => ({
+        durationInFrames: props.totalFrames,
+        fps: props.fps,
+      })}
     />
   </>
 );
