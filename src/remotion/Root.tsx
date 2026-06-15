@@ -26,7 +26,7 @@ const defaultProps: RemotionVideoData = {
 export const RemotionRoot: React.FC = () => (
   <>
     <Composition
-      id="MainVideo_16x9"
+      id="MainVideo-16x9"
       component={MainVideo}
       durationInFrames={defaultProps.totalFrames}
       fps={defaultProps.fps}
@@ -35,7 +35,7 @@ export const RemotionRoot: React.FC = () => (
       defaultProps={defaultProps}
     />
     <Composition
-      id="MainVideo_9x16"
+      id="MainVideo-9x16"
       component={MainVideo}
       durationInFrames={defaultProps.totalFrames}
       fps={defaultProps.fps}
