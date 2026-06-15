@@ -1,5 +1,5 @@
 import React from 'react';
-import { Composition } from 'remotion';
+import { Composition, registerRoot } from 'remotion';
 import { MainVideo } from './compositions/MainVideo';
 import { RemotionVideoData } from '../types';
 
@@ -15,6 +15,7 @@ const defaultProps: RemotionVideoData = {
       backgroundTypes: [],
       sfxPaths: [],
       mood: 'inspirational',
+      captionWords: [],
     },
   ],
   bgmPath: '',
@@ -44,3 +45,5 @@ export const RemotionRoot: React.FC = () => (
     />
   </>
 );
+
+registerRoot(RemotionRoot);
