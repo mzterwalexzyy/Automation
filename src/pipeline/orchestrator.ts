@@ -75,7 +75,8 @@ export async function buildAssetBundle(
         );
         console.log(`    ✅ ${backgrounds.length} image(s) downloaded`);
       } catch (err) {
-        throw new Error(`No assets found for ${scene.id}: ${(err as Error).message}`);
+        console.warn(`    ⚠️  Images also failed: ${(err as Error).message}`);
+        console.warn(`    🎨  Using dark gradient background for ${scene.id}`);
       }
     }
 
