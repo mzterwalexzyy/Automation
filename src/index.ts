@@ -14,6 +14,12 @@ function findVoiceover(): string {
   return file ? path.join(dir, file) : '';
 }
 
+function toFileUrl(p: string): string {
+  if (!p) return p;
+  if (p.startsWith('file://') || p.startsWith('http://') || p.startsWith('https://')) return p;
+  return p.startsWith('/') ? `file://${p}` : p;
+}
+
 async function main(): Promise<void> {
   const scriptPath = process.argv[2];
   if (!scriptPath) {
@@ -56,9 +62,9 @@ async function main(): Promise<void> {
       id: scene.id,
       narration: scene.narration,
       durationFrames: Math.round(scene.durationSeconds * FPS),
-      backgroundPaths: sceneAssets.backgrounds.map((b) => b.localPath),
+      backgroundPaths: sceneAssets.backgrounds.map((b) => toFileUrl(b.localPath)),
       backgroundTypes: sceneAssets.backgrounds.map((b) => b.type as 'video' | 'image'),
-      sfxPaths: sceneAssets.sfx.map((s) => s.localPath).filter(Boolean),
+      sfxPaths: sceneAssets.sfx.map((s) => toFileUrl(s.localPath)).filter(Boolean),
       mood: sceneMood?.mood ?? mood.mood,
     };
   });
@@ -68,8 +74,8 @@ async function main(): Promise<void> {
     title: parsedScript.title,
     fps: FPS,
     scenes,
-    bgmPath: assets.bgm.localPath,
-    voPath,
+    bgmPath: toFileUrl(assets.bgm.localPath),
+    voPath: toFileUrl(voPath),
     totalFrames,
   };
 
