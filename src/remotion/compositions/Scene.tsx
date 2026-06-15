@@ -37,17 +37,6 @@ const BLUE_TINT: Record<string, string> = {
   default:     'rgba(8, 18, 55, 0.15)',
 };
 
-const WORDS_PER_CHUNK = 7;
-
-function buildCaptionChunks(narration: string): string[][] {
-  const words = narration.trim().split(/\s+/).filter(Boolean);
-  const chunks: string[][] = [];
-  for (let i = 0; i < words.length; i += WORDS_PER_CHUNK) {
-    chunks.push(words.slice(i, i + WORDS_PER_CHUNK));
-  }
-  return chunks.length > 0 ? chunks : [[]];
-}
-
 function toSrc(p: string): string {
   if (!p) return p;
   if (p.startsWith('http://') || p.startsWith('https://')) return p;
@@ -57,7 +46,6 @@ function toSrc(p: string): string {
 export const SceneComponent: React.FC<Props> = ({ scene, fps }) => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
-  const isPortrait = height > width;
 
   const fadeDuration = Math.min(fps * 0.5, scene.durationFrames * 0.15);
   const opacity = interpolate(
@@ -78,23 +66,9 @@ export const SceneComponent: React.FC<Props> = ({ scene, fps }) => {
   const currentPath = scene.backgroundPaths[currentClipIndex] ?? '';
   const currentType = scene.backgroundTypes[currentClipIndex] ?? 'image';
 
-  const chunks = buildCaptionChunks(scene.narration);
-  const chunkCount = Math.max(chunks.length, 1);
-  const framesPerChunk = scene.durationFrames / chunkCount;
-  const currentChunkIdx = Math.min(Math.floor(frame / framesPerChunk), chunkCount - 1);
-  const frameInChunk = frame - currentChunkIdx * framesPerChunk;
-  const currentChunk = chunks[currentChunkIdx] ?? [];
-  const framesPerWord = framesPerChunk / Math.max(currentChunk.length, 1);
-  const highlightIdx = Math.min(
-    Math.floor(frameInChunk / framesPerWord),
-    currentChunk.length - 1
-  );
-
   const moodKey = scene.mood?.toLowerCase() ?? 'default';
   const colorFilter = MOOD_FILTERS[moodKey] ?? 'contrast(1.40) saturate(0.40) brightness(0.72)';
   const blueTint = BLUE_TINT[moodKey] ?? BLUE_TINT.default;
-  const fontSize = isPortrait ? 56 : 44;
-  const sidePad = isPortrait ? 50 : 140;
 
   return (
     <AbsoluteFill style={{ opacity }}>
@@ -112,70 +86,20 @@ export const SceneComponent: React.FC<Props> = ({ scene, fps }) => {
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
         ) : (
-          <div
-            style={{
-              width: '100%',
-              height: '100%',
-              background: 'linear-gradient(135deg, #0f0c29, #302b63, #24243e)',
-            }}
-          />
+          <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #0f0c29, #302b63, #24243e)' }} />
         )}
       </AbsoluteFill>
 
-      {/* Layer 2: Blue tint overlay for desaturated cinematic look */}
+      {/* Layer 2: Blue tint */}
       <AbsoluteFill style={{ backgroundColor: blueTint }} />
 
-      {/* Layer 3: Cinematic vignette */}
-      <AbsoluteFill
-        style={{
-          background:
-            'radial-gradient(ellipse at 50% 50%, transparent 28%, rgba(0,0,0,0.55) 70%, rgba(0,0,0,0.88) 100%)',
-        }}
-      />
+      {/* Layer 3: Vignette */}
+      <AbsoluteFill style={{ background: 'radial-gradient(ellipse at 50% 50%, transparent 28%, rgba(0,0,0,0.55) 70%, rgba(0,0,0,0.88) 100%)' }} />
 
-      {/* Layer 4: Bottom gradient for caption legibility */}
-      <AbsoluteFill
-        style={{
-          background:
-            'linear-gradient(to bottom, rgba(0,0,0,0.0) 38%, rgba(0,0,0,0.72) 78%, rgba(0,0,0,0.92) 100%)',
-        }}
-      />
+      {/* Layer 4: Bottom gradient */}
+      <AbsoluteFill style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.0) 38%, rgba(0,0,0,0.72) 78%, rgba(0,0,0,0.92) 100%)' }} />
 
-      {/* Layer 5: Animated word-highlight captions */}
-      <AbsoluteFill
-        style={{
-          display: 'flex',
-          alignItems: 'flex-end',
-          justifyContent: 'center',
-          padding: `64px ${sidePad}px`,
-        }}
-      >
-        <div style={{ textAlign: 'center', maxWidth: isPortrait ? '90%' : '78%', lineHeight: 1.55 }}>
-          {currentChunk.map((word, i) => (
-            <span
-              key={`${currentChunkIdx}-${i}`}
-              style={{
-                display: 'inline-block',
-                marginRight: 10,
-                marginBottom: 6,
-                fontSize,
-                fontFamily: '"Helvetica Neue", Arial, sans-serif',
-                fontWeight: i === highlightIdx ? 800 : 600,
-                color: i === highlightIdx ? '#FFD700' : '#ffffff',
-                opacity: i <= highlightIdx ? 1 : 0.35,
-                textShadow:
-                  i === highlightIdx
-                    ? '0 0 24px rgba(255,215,0,0.55), 0 2px 8px rgba(0,0,0,0.95)'
-                    : '0 2px 8px rgba(0,0,0,0.95)',
-              }}
-            >
-              {word}
-            </span>
-          ))}
-        </div>
-      </AbsoluteFill>
-
-      {/* Scene SFX */}
+      {/* SFX only — no subtitles */}
       {scene.sfxPaths.map((src, i) => (
         <Audio key={i} src={toSrc(src)} volume={0.55} />
       ))}
