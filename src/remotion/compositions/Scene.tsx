@@ -18,17 +18,27 @@ interface Props {
   fps: number;
 }
 
+// Heavy cinematic grading — desaturated, high contrast, low-key
 const MOOD_FILTERS: Record<string, string> = {
-  dramatic:      'contrast(1.2) saturate(0.85) brightness(0.88)',
-  uplifting:     'contrast(1.1) saturate(1.15) brightness(1.05)',
-  melancholic:   'contrast(1.1) saturate(0.6)  brightness(0.85) sepia(0.15)',
-  tense:         'contrast(1.3) saturate(0.75) brightness(0.82)',
-  peaceful:      'contrast(1.0) saturate(1.05) brightness(1.02)',
-  energetic:     'contrast(1.2) saturate(1.25) brightness(1.02)',
-  inspirational: 'contrast(1.1) saturate(1.1)  brightness(1.04)',
-  corporate:     'contrast(1.05) saturate(0.9) brightness(1.0)',
-  mysterious:    'contrast(1.2) saturate(0.7)  brightness(0.78)',
-  romantic:      'contrast(1.0) saturate(1.15) brightness(1.0) sepia(0.08)',
+  dramatic:      'contrast(1.55) saturate(0.38) brightness(0.70)',
+  uplifting:     'contrast(1.15) saturate(1.10) brightness(1.04)',
+  melancholic:   'contrast(1.35) saturate(0.45) brightness(0.75) sepia(0.12)',
+  tense:         'contrast(1.60) saturate(0.30) brightness(0.65)',
+  peaceful:      'contrast(1.05) saturate(1.05) brightness(1.02)',
+  energetic:     'contrast(1.25) saturate(1.20) brightness(1.02)',
+  inspirational: 'contrast(1.15) saturate(1.08) brightness(1.03)',
+  corporate:     'contrast(1.10) saturate(0.85) brightness(0.98)',
+  mysterious:    'contrast(1.50) saturate(0.35) brightness(0.68)',
+  romantic:      'contrast(1.05) saturate(1.10) brightness(1.00) sepia(0.06)',
+};
+
+// Blue tint overlay strength per mood
+const BLUE_TINT: Record<string, string> = {
+  dramatic:   'rgba(8, 20, 70, 0.28)',
+  tense:      'rgba(5, 12, 60, 0.35)',
+  mysterious: 'rgba(10, 18, 75, 0.32)',
+  melancholic:'rgba(15, 25, 65, 0.25)',
+  default:    'rgba(8, 18, 55, 0.15)',
 };
 
 function buildEstimatedChunks(narration: string, chunkSize: number): string[][] {
@@ -86,10 +96,10 @@ export const SceneComponent: React.FC<Props> = ({ scene, fps }) => {
   const currentPath = scene.backgroundPaths[currentClipIndex] ?? '';
   const currentType = scene.backgroundTypes[currentClipIndex] ?? 'image';
 
-  const colorFilter = MOOD_FILTERS[scene.mood?.toLowerCase()] ?? 'contrast(1.1)';
+  const moodKey = scene.mood?.toLowerCase() ?? 'dramatic';
+  const colorFilter = MOOD_FILTERS[moodKey] ?? MOOD_FILTERS.dramatic;
+  const blueTint = BLUE_TINT[moodKey] ?? BLUE_TINT.default;
 
-  // 9:16 portrait: 3 words max (TikTok/Reels style)
-  // 16:9 landscape: 7 words
   const chunkSize = isPortrait ? 3 : 7;
   let captionWords: string[] = [];
   let highlightIdx = 0;
@@ -116,8 +126,8 @@ export const SceneComponent: React.FC<Props> = ({ scene, fps }) => {
   const bottomPad = isPortrait ? 220 : 72;
 
   return (
-    <AbsoluteFill style={{ opacity }}>
-      {/* Color-graded background with multi-clip cycling */}
+    <AbsoluteFill style={{ opacity, backgroundColor: '#000' }}>
+      {/* --- Layer 1: Color-graded footage with Ken Burns --- */}
       <AbsoluteFill style={{ transform: `scale(${scale})`, overflow: 'hidden', filter: colorFilter }}>
         {currentType === 'video' && currentPath ? (
           <OffthreadVideo
@@ -135,20 +145,32 @@ export const SceneComponent: React.FC<Props> = ({ scene, fps }) => {
             style={{
               width: '100%',
               height: '100%',
-              background: 'linear-gradient(135deg, #0f0c29, #302b63, #24243e)',
+              background: 'linear-gradient(135deg, #050a1a, #0d1a3a, #080d20)',
             }}
           />
         )}
       </AbsoluteFill>
 
-      {/* Bottom gradient for caption legibility */}
+      {/* --- Layer 2: Blue tint color grade overlay --- */}
+      <AbsoluteFill style={{ backgroundColor: blueTint }} />
+
+      {/* --- Layer 3: Vignette (dark edges) --- */}
       <AbsoluteFill
         style={{
-          background: 'linear-gradient(to bottom, rgba(0,0,0,0.0) 45%, rgba(0,0,0,0.6) 100%)',
+          background:
+            'radial-gradient(ellipse at 50% 50%, transparent 28%, rgba(0,0,0,0.55) 70%, rgba(0,0,0,0.88) 100%)',
         }}
       />
 
-      {/* Caption pill */}
+      {/* --- Layer 4: Bottom gradient for caption legibility --- */}
+      <AbsoluteFill
+        style={{
+          background:
+            'linear-gradient(to bottom, rgba(0,0,0,0.0) 38%, rgba(0,0,0,0.72) 78%, rgba(0,0,0,0.92) 100%)',
+        }}
+      />
+
+      {/* --- Layer 5: Caption pill --- */}
       <AbsoluteFill
         style={{
           display: 'flex',
@@ -159,7 +181,7 @@ export const SceneComponent: React.FC<Props> = ({ scene, fps }) => {
       >
         <div
           style={{
-            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            backgroundColor: 'rgba(0, 0, 0, 0.72)',
             borderRadius: 16,
             padding: isPortrait ? '20px 36px' : '14px 36px',
             display: 'flex',
@@ -168,6 +190,7 @@ export const SceneComponent: React.FC<Props> = ({ scene, fps }) => {
             alignItems: 'center',
             gap: `0 ${isPortrait ? 16 : 10}px`,
             maxWidth: '100%',
+            boxShadow: '0 4px 32px rgba(0,0,0,0.7)',
           }}
         >
           {captionWords.map((word, i) => (
@@ -176,11 +199,15 @@ export const SceneComponent: React.FC<Props> = ({ scene, fps }) => {
               style={{
                 fontSize,
                 fontFamily: antonFont,
-                letterSpacing: isPortrait ? 2.5 : 1,
+                letterSpacing: isPortrait ? 2.5 : 1.5,
                 lineHeight: 1.25,
                 textTransform: 'uppercase',
                 color: i === highlightIdx ? '#FFD700' : '#FFFFFF',
-                opacity: i <= highlightIdx ? 1 : 0.4,
+                opacity: i <= highlightIdx ? 1 : 0.38,
+                textShadow:
+                  i === highlightIdx
+                    ? '0 0 24px rgba(255,215,0,0.55), 0 2px 8px rgba(0,0,0,0.95)'
+                    : '0 2px 8px rgba(0,0,0,0.95)',
               }}
             >
               {word}
@@ -189,7 +216,7 @@ export const SceneComponent: React.FC<Props> = ({ scene, fps }) => {
         </div>
       </AbsoluteFill>
 
-      {/* Scene SFX */}
+      {/* --- SFX --- */}
       {scene.sfxPaths.map((src, i) => (
         <Audio key={i} src={src} volume={0.55} />
       ))}
