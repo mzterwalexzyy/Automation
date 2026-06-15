@@ -3,13 +3,14 @@ name: Render Video
 on:
   push:
     branches:
-      - claude/automated-video-remotion-9m618e
+      - main
     paths:
       - 'scripts/**'
+      - 'voiceover/**'
   workflow_dispatch:
     inputs:
       script_content:
-        description: 'Paste your full script here'
+        description: 'Paste your full script here (use [MM:SS - MM:SS] format for each line)'
         required: true
         type: string
       output_name:
@@ -42,7 +43,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Ensure Chrome is available for Remotion
+      - name: Ensure Chrome for Remotion
         run: npx remotion browser ensure
 
       - name: Write API keys to .env
@@ -52,9 +53,10 @@ jobs:
             echo "PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}"
             echo "FREESOUND_API_KEY=${{ secrets.FREESOUND_API_KEY }}"
             echo "PIXABAY_API_KEY=${{ secrets.PIXABAY_API_KEY }}"
+            echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}"
           } > .env
 
-      # --- Manual trigger path ---
+      # --- Manual trigger ---
       - name: Write dispatched script to file
         if: github.event_name == 'workflow_dispatch'
         env:
@@ -63,24 +65,24 @@ jobs:
           mkdir -p scripts
           printf '%s' "$SCRIPT_CONTENT" > "scripts/${{ github.event.inputs.output_name }}.txt"
 
-      - name: Run pipeline (manual trigger)
+      - name: Run pipeline (manual)
         if: github.event_name == 'workflow_dispatch'
         run: npm start "scripts/${{ github.event.inputs.output_name }}.txt"
 
-      # --- Push trigger path ---
-      - name: Detect pushed script file
+      # --- Push trigger ---
+      - name: Detect pushed script
         if: github.event_name == 'push'
         id: detect
         run: |
           FILE=$(git diff-tree --no-commit-id -r --name-only ${{ github.sha }} -- 'scripts/' | grep '\.txt$' | head -1)
           echo "script_file=${FILE:-scripts/example-script.txt}" >> "$GITHUB_OUTPUT"
 
-      - name: Run pipeline (push trigger)
+      - name: Run pipeline (push)
         if: github.event_name == 'push'
         run: npm start "${{ steps.detect.outputs.script_file }}"
 
-      # --- Upload output ---
-      - name: Upload rendered video
+      # --- Upload both formats ---
+      - name: Upload rendered videos
         uses: actions/upload-artifact@v4
         with:
           name: rendered-video-${{ github.run_number }}

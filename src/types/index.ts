@@ -51,6 +51,12 @@ export interface VideoAssetBundle {
   bgm: MediaAsset;
 }
 
+export interface CaptionWord {
+  word: string;
+  startSeconds: number;
+  endSeconds: number;
+}
+
 export interface RemotionSceneData {
   id: string;
   narration: string;
@@ -59,6 +65,7 @@ export interface RemotionSceneData {
   backgroundTypes: Array<'video' | 'image'>;
   sfxPaths: string[];
   mood: string;
+  captionWords: CaptionWord[];
 }
 
 export interface RemotionVideoData {

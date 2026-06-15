@@ -7,16 +7,18 @@
     "start": "ts-node src/index.ts",
     "build": "tsc",
     "studio": "remotion studio src/remotion/Root.tsx",
-    "render:preview": "remotion render src/remotion/Root.tsx MainVideo output/preview.mp4",
+    "render:preview": "remotion render src/remotion/Root.tsx MainVideo_16x9 output/preview.mp4",
     "dev": "ts-node-dev --respawn src/index.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.27.0",
     "@remotion/bundler": "^4.0.0",
     "@remotion/cli": "^4.0.0",
+    "@remotion/google-fonts": "^4.0.0",
     "@remotion/renderer": "^4.0.0",
     "axios": "^1.7.0",
     "dotenv": "^16.4.0",
+    "openai": "^4.0.0",
     "remotion": "^4.0.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"

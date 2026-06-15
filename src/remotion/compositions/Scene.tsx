@@ -8,7 +8,10 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion';
-import { RemotionSceneData } from '../../types';
+import { loadFont } from '@remotion/google-fonts/Anton';
+import { RemotionSceneData, CaptionWord } from '../../types';
+
+const { fontFamily: antonFont } = loadFont('normal');
 
 interface Props {
   scene: RemotionSceneData;
@@ -28,15 +31,34 @@ const MOOD_FILTERS: Record<string, string> = {
   romantic:      'contrast(1.0) saturate(1.15) brightness(1.0) sepia(0.08)',
 };
 
-const WORDS_PER_CHUNK = 7;
-
-function buildCaptionChunks(narration: string): string[][] {
+function buildEstimatedChunks(narration: string, chunkSize: number): string[][] {
   const words = narration.trim().split(/\s+/).filter(Boolean);
   const chunks: string[][] = [];
-  for (let i = 0; i < words.length; i += WORDS_PER_CHUNK) {
-    chunks.push(words.slice(i, i + WORDS_PER_CHUNK));
+  for (let i = 0; i < words.length; i += chunkSize) {
+    chunks.push(words.slice(i, i + chunkSize));
   }
-  return chunks.length > 0 ? chunks : [[]];
+  return chunks.length > 0 ? chunks : [['']];
+}
+
+function getWhisperChunk(
+  captionWords: CaptionWord[],
+  currentTimeSec: number,
+  chunkSize: number
+): { words: string[]; highlightIdx: number } {
+  if (captionWords.length === 0) return { words: [], highlightIdx: 0 };
+
+  let currentWordIdx = 0;
+  for (let i = 0; i < captionWords.length; i++) {
+    if (currentTimeSec >= captionWords[i].startSeconds) {
+      currentWordIdx = i;
+    }
+  }
+
+  const chunkStart = Math.floor(currentWordIdx / chunkSize) * chunkSize;
+  return {
+    words: captionWords.slice(chunkStart, chunkStart + chunkSize).map((w) => w.word),
+    highlightIdx: currentWordIdx - chunkStart,
+  };
 }
 
 export const SceneComponent: React.FC<Props> = ({ scene, fps }) => {
@@ -44,7 +66,6 @@ export const SceneComponent: React.FC<Props> = ({ scene, fps }) => {
   const { width, height } = useVideoConfig();
   const isPortrait = height > width;
 
-  // Fade in/out
   const fadeDuration = Math.min(fps * 0.5, scene.durationFrames * 0.15);
   const opacity = interpolate(
     frame,
@@ -53,39 +74,50 @@ export const SceneComponent: React.FC<Props> = ({ scene, fps }) => {
     { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }
   );
 
-  // Subtle Ken Burns zoom
   const scale = interpolate(frame, [0, scene.durationFrames], [1.0, 1.07], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
 
-  // Multi-clip cycling — hard cut between clips
+  // Multi-clip cycling
   const clipCount = Math.max(scene.backgroundPaths.length, 1);
   const framesPerClip = Math.floor(scene.durationFrames / clipCount);
   const currentClipIndex = Math.min(Math.floor(frame / framesPerClip), clipCount - 1);
   const currentPath = scene.backgroundPaths[currentClipIndex] ?? '';
   const currentType = scene.backgroundTypes[currentClipIndex] ?? 'image';
 
-  // Animated word-highlight captions
-  const chunks = buildCaptionChunks(scene.narration);
-  const chunkCount = Math.max(chunks.length, 1);
-  const framesPerChunk = scene.durationFrames / chunkCount;
-  const currentChunkIdx = Math.min(Math.floor(frame / framesPerChunk), chunkCount - 1);
-  const frameInChunk = frame - currentChunkIdx * framesPerChunk;
-  const currentChunk = chunks[currentChunkIdx] ?? [];
-  const framesPerWord = framesPerChunk / Math.max(currentChunk.length, 1);
-  const highlightIdx = Math.min(
-    Math.floor(frameInChunk / framesPerWord),
-    currentChunk.length - 1
-  );
+  const colorFilter = MOOD_FILTERS[scene.mood?.toLowerCase()] ?? 'contrast(1.1)';
 
-  const colorFilter = MOOD_FILTERS[scene.mood?.toLowerCase()] ?? 'contrast(1.1) saturate(1.0)';
-  const fontSize = isPortrait ? 56 : 44;
-  const sidePad = isPortrait ? 50 : 140;
+  // 9:16 portrait: 3 words max (TikTok/Reels style)
+  // 16:9 landscape: 7 words
+  const chunkSize = isPortrait ? 3 : 7;
+  let captionWords: string[] = [];
+  let highlightIdx = 0;
+
+  if (scene.captionWords.length > 0) {
+    const result = getWhisperChunk(scene.captionWords, frame / fps, chunkSize);
+    captionWords = result.words;
+    highlightIdx = result.highlightIdx;
+  } else {
+    const chunks = buildEstimatedChunks(scene.narration, chunkSize);
+    const framesPerChunk = scene.durationFrames / Math.max(chunks.length, 1);
+    const chunkIdx = Math.min(Math.floor(frame / framesPerChunk), chunks.length - 1);
+    const frameInChunk = frame - chunkIdx * framesPerChunk;
+    captionWords = chunks[chunkIdx] ?? [];
+    const framesPerWord = framesPerChunk / Math.max(captionWords.length, 1);
+    highlightIdx = Math.min(
+      Math.floor(frameInChunk / framesPerWord),
+      captionWords.length - 1
+    );
+  }
+
+  const fontSize = isPortrait ? 72 : 48;
+  const sidePad = isPortrait ? 36 : 100;
+  const bottomPad = isPortrait ? 220 : 72;
 
   return (
     <AbsoluteFill style={{ opacity }}>
-      {/* Color-graded background */}
+      {/* Color-graded background with multi-clip cycling */}
       <AbsoluteFill style={{ transform: `scale(${scale})`, overflow: 'hidden', filter: colorFilter }}>
         {currentType === 'video' && currentPath ? (
           <OffthreadVideo
@@ -112,34 +144,43 @@ export const SceneComponent: React.FC<Props> = ({ scene, fps }) => {
       {/* Bottom gradient for caption legibility */}
       <AbsoluteFill
         style={{
-          background:
-            'linear-gradient(to bottom, rgba(0,0,0,0.0) 50%, rgba(0,0,0,0.7) 100%)',
+          background: 'linear-gradient(to bottom, rgba(0,0,0,0.0) 45%, rgba(0,0,0,0.6) 100%)',
         }}
       />
 
-      {/* Animated word-highlight captions */}
+      {/* Caption pill */}
       <AbsoluteFill
         style={{
           display: 'flex',
           alignItems: 'flex-end',
           justifyContent: 'center',
-          padding: `64px ${sidePad}px`,
+          padding: `0 ${sidePad}px ${bottomPad}px`,
         }}
       >
-        <div style={{ textAlign: 'center', maxWidth: isPortrait ? '90%' : '78%', lineHeight: 1.55 }}>
-          {currentChunk.map((word, i) => (
+        <div
+          style={{
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            borderRadius: 16,
+            padding: isPortrait ? '20px 36px' : '14px 36px',
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: `0 ${isPortrait ? 16 : 10}px`,
+            maxWidth: '100%',
+          }}
+        >
+          {captionWords.map((word, i) => (
             <span
-              key={`${currentChunkIdx}-${i}`}
+              key={i}
               style={{
-                display: 'inline-block',
-                marginRight: 10,
-                marginBottom: 6,
                 fontSize,
-                fontFamily: '"Helvetica Neue", Arial, sans-serif',
-                fontWeight: i === highlightIdx ? 800 : 600,
-                color: i === highlightIdx ? '#FFD700' : '#ffffff',
-                opacity: i <= highlightIdx ? 1 : 0.35,
-                textShadow: '0 2px 20px rgba(0,0,0,1)',
+                fontFamily: antonFont,
+                letterSpacing: isPortrait ? 2.5 : 1,
+                lineHeight: 1.25,
+                textTransform: 'uppercase',
+                color: i === highlightIdx ? '#FFD700' : '#FFFFFF',
+                opacity: i <= highlightIdx ? 1 : 0.4,
               }}
             >
               {word}

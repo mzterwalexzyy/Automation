@@ -5,6 +5,7 @@ import { parseScript } from './script/parser';
 import { analyzeMood } from './mood/analyzer';
 import { buildAssetBundle } from './pipeline/orchestrator';
 import { bundleProject, renderFormat } from './remotion/render';
+import { transcribeVoiceover, getSceneCaptions } from './captions/whisper';
 import { RemotionVideoData, RemotionSceneData } from './types';
 
 function findVoiceover(): string {
@@ -18,7 +19,6 @@ async function main(): Promise<void> {
   const scriptPath = process.argv[2];
   if (!scriptPath) {
     console.error('Usage: npm start <path-to-script.txt>');
-    console.error('Example: npm start scripts/my-story.txt');
     process.exit(1);
   }
 
@@ -29,21 +29,21 @@ async function main(): Promise<void> {
 
   console.log('\n📝 Step 1/4 — Parsing script...');
   const parsedScript = await parseScript(scriptText);
-  console.log(
-    `   ✅ "${parsedScript.title}" — ${parsedScript.scenes.length} scenes, ${parsedScript.totalDurationSeconds}s total`
-  );
+  console.log(`   ✅ "${parsedScript.title}" — ${parsedScript.scenes.length} scenes, ${parsedScript.totalDurationSeconds}s`);
 
   console.log('\n🎭 Step 2/4 — Analyzing mood...');
   const mood = await analyzeMood(parsedScript);
   console.log(`   ✅ ${mood.mood} | ${mood.energy} energy | ${mood.tempo} tempo`);
 
-  console.log('\n📥 Step 3/4 — Sourcing & downloading assets...');
+  console.log('\n📥 Step 3/4 — Sourcing assets...');
   const voPath = findVoiceover();
   if (voPath) {
-    console.log(`   🎤 Voiceover found: ${path.basename(voPath)}`);
+    console.log(`   🎤 Voiceover: ${path.basename(voPath)}`);
   } else {
     console.log('   ℹ️  No voiceover in voiceover/ — BGM only');
   }
+
+  const allCaptionWords = voPath ? await transcribeVoiceover(voPath) : [];
   const assets = await buildAssetBundle(parsedScript, mood);
   console.log(`   ✅ Assets ready for ${parsedScript.scenes.length} scenes`);
 
@@ -52,6 +52,7 @@ async function main(): Promise<void> {
     const sceneAssets = assets.scenes.find((a) => a.sceneId === scene.id);
     if (!sceneAssets) throw new Error(`Missing assets for ${scene.id}`);
     const sceneMood = mood.scenes.find((m) => m.sceneId === scene.id);
+
     return {
       id: scene.id,
       narration: scene.narration,
@@ -60,6 +61,10 @@ async function main(): Promise<void> {
       backgroundTypes: sceneAssets.backgrounds.map((b) => b.type as 'video' | 'image'),
       sfxPaths: sceneAssets.sfx.map((s) => s.localPath).filter(Boolean),
       mood: sceneMood?.mood ?? mood.mood,
+      captionWords:
+        allCaptionWords.length > 0
+          ? getSceneCaptions(allCaptionWords, scene.startSeconds, scene.endSeconds)
+          : [],
     };
   });
 
@@ -75,7 +80,6 @@ async function main(): Promise<void> {
 
   console.log('\n🎥 Step 4/4 — Rendering video...');
   const safeName = parsedScript.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
-
   const bundled = await bundleProject();
 
   const out16x9 = path.join(process.cwd(), 'output', `${safeName}-16x9.mp4`);
@@ -86,8 +90,8 @@ async function main(): Promise<void> {
 
   console.log('\n' + '─'.repeat(44));
   console.log('✅ Done!\n');
-  console.log(`   📺 16:9 (YouTube):       ${out16x9}`);
-  console.log(`   📱 9:16  (Reels/Shorts): ${out9x16}\n`);
+  console.log(`   📺 16:9  (YouTube):      ${out16x9}`);
+  console.log(`   📱 9:16  (Reels/TikTok): ${out9x16}\n`);
 }
 
 main().catch((err) => {
