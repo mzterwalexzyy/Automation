@@ -21,10 +21,12 @@ export async function renderFormat(
   const compositionId = format === '9x16' ? 'MainVideo_9x16' : 'MainVideo_16x9';
   const label = format === '9x16' ? '9:16 (Reels/Shorts)' : '16:9 (YouTube)';
 
+  const props = videoData as unknown as Record<string, unknown>;
+
   const composition = await selectComposition({
     serveUrl: bundled,
     id: compositionId,
-    inputProps: videoData,
+    inputProps: props,
   });
 
   const outDir = path.dirname(outputPath);
@@ -36,7 +38,7 @@ export async function renderFormat(
     serveUrl: bundled,
     codec: 'h264',
     outputLocation: outputPath,
-    inputProps: videoData,
+    inputProps: props,
     onProgress: ({ progress }) => {
       process.stdout.write(`\r    ${label}: ${Math.round(progress * 100)}%  `);
     },
