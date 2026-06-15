@@ -1,7 +1,15 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ParsedScript, ScriptScene } from '../types';
 
-const client = new Anthropic();
+function getModel() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY is not set in environment');
+  return new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: 'gemini-2.0-flash' });
+}
+
+function cleanJson(text: string): string {
+  return text.trim().replace(/^```json\n?/, '').replace(/^```\n?/, '').replace(/\n?```$/, '');
+}
 
 function toSeconds(ts: string): number {
   const parts = ts.split(':').map(Number);
@@ -17,11 +25,8 @@ function extractTimestampedScenes(
   text: string
 ): Array<{ narration: string; startSeconds: number; endSeconds: number }> {
   const scenes: Array<{ narration: string; startSeconds: number; endSeconds: number }> = [];
-
   for (const line of text.split('\n').map((l) => l.trim()).filter(Boolean)) {
-    const match = line.match(
-      /^\[(\d+:\d+(?::\d+)?)\s*[-–—]\s*(\d+:\d+(?::\d+)?)\]\s*(.+)/
-    );
+    const match = line.match(/^\[(\d+:\d+(?::\d+)?)\s*[-–—]\s*(\d+:\d+(?::\d+)?)\]\s*(.+)/);
     if (match) {
       scenes.push({
         startSeconds: toSeconds(match[1]),
@@ -36,39 +41,24 @@ function extractTimestampedScenes(
 async function enrichWithVisuals(
   raw: Array<{ narration: string; startSeconds: number; endSeconds: number }>
 ): Promise<{ title: string; scenes: ScriptScene[] }> {
-  const sceneList = raw
-    .map((s, i) => `Scene ${i + 1}: "${s.narration}"`)
-    .join('\n');
+  const sceneList = raw.map((s, i) => `Scene ${i + 1}: "${s.narration}"`).join('\n');
 
-  const message = await client.messages.create({
-    model: 'claude-opus-4-8',
-    max_tokens: 2048,
-    messages: [
-      {
-        role: 'user',
-        content: `You are a video director. For each scene, write a specific visual description for b-roll stock footage search. Also provide a short video title.
+  const result = await getModel().generateContent(
+    `You are a video director. For each scene write a specific visual description for b-roll stock footage search. Also give a short punchy video title.
 
-Return ONLY valid JSON:
+Return ONLY valid JSON (no markdown):
 {
-  "title": "short punchy video title",
+  "title": "short punchy title",
   "scenes": [
-    { "index": 0, "visualDescription": "specific b-roll description, e.g. 'person typing on laptop at night in dark office'" }
+    { "index": 0, "visualDescription": "specific b-roll description e.g. 'detective examining crime scene photos on dark desk'" }
   ]
 }
 
 Scenes:
-${sceneList}
+${sceneList}`
+  );
 
-Return ONLY valid JSON. No markdown fences.`,
-      },
-    ],
-  });
-
-  const content = message.content[0];
-  if (content.type !== 'text') throw new Error('Unexpected Claude response');
-  const cleaned = content.text.trim().replace(/^```json\n?/, '').replace(/\n?```$/, '');
-  const parsed = JSON.parse(cleaned);
-
+  const parsed = JSON.parse(cleanJson(result.response.text()));
   return {
     title: parsed.title ?? 'My Video',
     scenes: raw.map((r, i) => ({
@@ -84,15 +74,10 @@ Return ONLY valid JSON. No markdown fences.`,
 }
 
 async function parsePlainScript(scriptText: string): Promise<ParsedScript> {
-  const message = await client.messages.create({
-    model: 'claude-opus-4-8',
-    max_tokens: 4096,
-    messages: [
-      {
-        role: 'user',
-        content: `Parse this script into scenes. Estimate timing at ~130 words per minute.
+  const result = await getModel().generateContent(
+    `Parse this script into scenes. Estimate timing at ~130 words per minute.
 
-Return ONLY valid JSON:
+Return ONLY valid JSON (no markdown):
 {
   "title": "video title",
   "scenes": [
@@ -110,17 +95,9 @@ Return ONLY valid JSON:
 }
 
 Script:
-${scriptText}
-
-Return ONLY valid JSON. No markdown.`,
-      },
-    ],
-  });
-
-  const content = message.content[0];
-  if (content.type !== 'text') throw new Error('Unexpected Claude response');
-  const cleaned = content.text.trim().replace(/^```json\n?/, '').replace(/\n?```$/, '');
-  return JSON.parse(cleaned) as ParsedScript;
+${scriptText}`
+  );
+  return JSON.parse(cleanJson(result.response.text())) as ParsedScript;
 }
 
 export async function parseScript(scriptText: string): Promise<ParsedScript> {
@@ -138,6 +115,6 @@ export async function parseScript(scriptText: string): Promise<ParsedScript> {
     };
   }
 
-  console.log('   📝 Plain script — Claude will estimate scene timing');
+  console.log('   📝 Plain script — Gemini will estimate scene timing');
   return parsePlainScript(scriptText);
 }

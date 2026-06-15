@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       script_content:
-        description: 'Paste your full script here (use [MM:SS - MM:SS] format for each line)'
+        description: 'Paste your script here (use [MM:SS - MM:SS] format per line)'
         required: true
         type: string
       output_name:
@@ -49,10 +49,11 @@ jobs:
       - name: Write API keys to .env
         run: |
           {
-            echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}"
+            echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}"
             echo "PEXELS_API_KEY=${{ secrets.PEXELS_API_KEY }}"
             echo "FREESOUND_API_KEY=${{ secrets.FREESOUND_API_KEY }}"
             echo "PIXABAY_API_KEY=${{ secrets.PIXABAY_API_KEY }}"
+            echo "ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}"
             echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}"
           } > .env
 

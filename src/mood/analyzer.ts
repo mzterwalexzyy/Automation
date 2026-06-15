@@ -1,22 +1,25 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ParsedScript, OverallMood } from '../types';
 
-const client = new Anthropic();
+function getModel() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY is not set in environment');
+  return new GoogleGenerativeAI(apiKey).getGenerativeModel({ model: 'gemini-2.0-flash' });
+}
+
+function cleanJson(text: string): string {
+  return text.trim().replace(/^```json\n?/, '').replace(/^```\n?/, '').replace(/\n?```$/, '');
+}
 
 export async function analyzeMood(script: ParsedScript): Promise<OverallMood> {
   const sceneList = script.scenes
     .map((s) => `[${s.id}] (${s.durationSeconds}s): ${s.narration}`)
     .join('\n');
 
-  const message = await client.messages.create({
-    model: 'claude-opus-4-8',
-    max_tokens: 2048,
-    messages: [
-      {
-        role: 'user',
-        content: `You are a video production AI. Analyze this script and suggest assets.
+  const result = await getModel().generateContent(
+    `You are a video production AI. Analyze this script and suggest assets.
 
-For EACH SCENE provide:
+For EACH SCENE:
 - mood: one of (dramatic, uplifting, melancholic, tense, peaceful, energetic, inspirational, corporate, mysterious, romantic)
 - energy: low | medium | high
 - brollKeywords: 3-5 specific searchable stock footage terms
@@ -24,37 +27,30 @@ For EACH SCENE provide:
 
 For the OVERALL VIDEO:
 - mood: dominant mood
-- energy: overall energy level
+- energy: overall energy
 - tempo: slow | medium | fast
-- bgmKeywords: 3-4 music genre/style keywords for background music
+- bgmKeywords: 3-4 music genre/style keywords
 
-Return ONLY valid JSON:
+Return ONLY valid JSON (no markdown):
 {
   "mood": "overall mood",
   "energy": "low|medium|high",
   "tempo": "slow|medium|fast",
-  "bgmKeywords": ["cinematic orchestral", "emotional", "inspiring"],
+  "bgmKeywords": ["cinematic", "dark", "suspense"],
   "scenes": [
     {
       "sceneId": "scene-1",
       "mood": "dramatic",
       "energy": "high",
-      "brollKeywords": ["city skyline at dusk", "busy street", "people walking fast"],
-      "sfxKeywords": ["city ambience", "traffic"]
+      "brollKeywords": ["crime scene investigation", "detective with flashlight", "dark alley at night"],
+      "sfxKeywords": ["tension drone", "heartbeat"]
     }
   ]
 }
 
 Scenes:
-${sceneList}
+${sceneList}`
+  );
 
-Return ONLY valid JSON. No markdown.`,
-      },
-    ],
-  });
-
-  const content = message.content[0];
-  if (content.type !== 'text') throw new Error('Unexpected Claude response');
-  const cleaned = content.text.trim().replace(/^```json\n?/, '').replace(/\n?```$/, '');
-  return JSON.parse(cleaned) as OverallMood;
+  return JSON.parse(cleanJson(result.response.text())) as OverallMood;
 }
