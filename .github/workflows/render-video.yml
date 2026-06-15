@@ -29,6 +29,11 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Pull voiceover files from main branch
+        run: |
+          git fetch origin main
+          git checkout origin/main -- voiceover/ 2>/dev/null || echo "No voiceover files on main"
+
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
