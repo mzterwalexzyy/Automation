@@ -1,7 +1,7 @@
 import { ParsedScript, OverallMood, VideoAssetBundle, SceneAssets, MediaAsset } from '../types';
 import { searchVideos, searchImages } from '../assets/pexels';
 import { searchSFX } from '../assets/freesound';
-import { searchBGM } from '../assets/pixabay';
+import { searchBGM, searchPixabayVideos } from '../assets/pixabay';
 import { downloadFile, inferExtension } from '../assets/downloader';
 
 export async function buildAssetBundle(
@@ -12,19 +12,16 @@ export async function buildAssetBundle(
 
   for (const scene of script.scenes) {
     const sceneMood = mood.scenes.find((s) => s.sceneId === scene.id);
-    const brollKeywords = sceneMood?.brollKeywords ?? [scene.visualDescription];
+    const brollKeywords = sceneMood?.brollKeywords ?? [scene.visualDescription ?? scene.narration.slice(0, 60)];
     const sfxKeywords = sceneMood?.sfxKeywords ?? [];
 
     console.log(`  📹 [${scene.id}] "${brollKeywords[0]}"`);
 
     let backgrounds: MediaAsset[] = [];
 
+    // 1. Pexels videos
     try {
-      const videos = await searchVideos(
-        brollKeywords,
-        Math.max(3, Math.floor(scene.durationSeconds))
-      );
-
+      const videos = await searchVideos(brollKeywords, Math.max(3, Math.floor(scene.durationSeconds)));
       if (videos.length > 0) {
         backgrounds = await Promise.all(
           videos.slice(0, 3).map(async (video) => {
@@ -45,38 +42,77 @@ export async function buildAssetBundle(
             };
           })
         );
-        console.log(`    ✅ ${backgrounds.length} video clip(s) downloaded`);
+        console.log(`    ✅ ${backgrounds.length} Pexels video clip(s)`);
       }
     } catch (err) {
-      console.warn(`    ⚠️  Video search failed: ${(err as Error).message}`);
+      console.warn(`    ⚠️  Pexels video failed: ${(err as Error).message}`);
     }
 
+    // 2. Pixabay videos
     if (backgrounds.length === 0) {
-      console.log(`    ↩️  Falling back to images`);
+      console.log(`    ↩️  Trying Pixabay videos...`);
+      try {
+        const videos = await searchPixabayVideos(brollKeywords);
+        if (videos.length > 0) {
+          backgrounds = await Promise.all(
+            videos.slice(0, 3).map(async (video) => {
+              const localPath = await downloadFile(
+                video.downloadUrl,
+                `${scene.id}-pbx-${video.id}.mp4`,
+                'video'
+              );
+              return {
+                id: String(video.id),
+                url: video.downloadUrl,
+                localPath,
+                type: 'video' as const,
+                durationSeconds: video.duration,
+                width: video.width,
+                height: video.height,
+              };
+            })
+          );
+          console.log(`    ✅ ${backgrounds.length} Pixabay video clip(s)`);
+        }
+      } catch (err) {
+        console.warn(`    ⚠️  Pixabay video failed: ${(err as Error).message}`);
+      }
+    }
+
+    // 3. Pexels images
+    if (backgrounds.length === 0) {
+      console.log(`    ↩️  Falling back to Pexels images`);
       try {
         const images = await searchImages(brollKeywords);
-        backgrounds = await Promise.all(
-          images.slice(0, 3).map(async (image) => {
-            const ext = inferExtension(image.downloadUrl, '.jpg');
-            const localPath = await downloadFile(
-              image.downloadUrl,
-              `${scene.id}-bg-${image.id}${ext}`,
-              'image'
-            );
-            return {
-              id: String(image.id),
-              url: image.downloadUrl,
-              localPath,
-              type: 'image' as const,
-              width: image.width,
-              height: image.height,
-            };
-          })
-        );
-        console.log(`    ✅ ${backgrounds.length} image(s) downloaded`);
+        if (images.length > 0) {
+          backgrounds = await Promise.all(
+            images.slice(0, 3).map(async (image) => {
+              const ext = inferExtension(image.downloadUrl, '.jpg');
+              const localPath = await downloadFile(
+                image.downloadUrl,
+                `${scene.id}-bg-${image.id}${ext}`,
+                'image'
+              );
+              return {
+                id: String(image.id),
+                url: image.downloadUrl,
+                localPath,
+                type: 'image' as const,
+                width: image.width,
+                height: image.height,
+              };
+            })
+          );
+          console.log(`    ✅ ${backgrounds.length} Pexels image(s)`);
+        }
       } catch (err) {
-        throw new Error(`No assets found for ${scene.id}: ${(err as Error).message}`);
+        console.warn(`    ⚠️  Pexels images failed: ${(err as Error).message}`);
       }
+    }
+
+    // 4. Gradient fallback (empty array renders dark gradient in Scene.tsx)
+    if (backgrounds.length === 0) {
+      console.warn(`    ⚠️  No assets found for ${scene.id} — using gradient background`);
     }
 
     const sfxList: MediaAsset[] = [];
