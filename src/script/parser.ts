@@ -38,29 +38,31 @@ function extractTimestampedScenes(
   return scenes;
 }
 
+async function withGeminiRetry<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const is429 = err?.message?.includes('429') || String(err).includes('429');
+      if (is429 && attempt < maxRetries) {
+        const waitMs = 45000;
+        console.log(`   ⏳ Gemini rate limit — waiting 45s before retry ${attempt + 1}/${maxRetries}...`);
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('Gemini retries exhausted');
+}
+
 async function enrichWithVisuals(
   raw: Array<{ narration: string; startSeconds: number; endSeconds: number }>
 ): Promise<{ title: string; scenes: ScriptScene[] }> {
   const sceneList = raw.map((s, i) => `Scene ${i + 1}: "${s.narration}"`).join('\n');
 
-  const result = await getModel().generateContent(
-    `You are a video director. For each scene write a specific visual description for b-roll stock footage search. Also give a short punchy video title.
-
-Return ONLY valid JSON (no markdown):
-{
-  "title": "short punchy title",
-  "scenes": [
-    { "index": 0, "visualDescription": "specific b-roll description e.g. 'detective examining crime scene photos on dark desk'" }
-  ]
-}
-
-Scenes:
-${sceneList}`
-  );
-
-  const parsed = JSON.parse(cleanJson(result.response.text()));
-  return {
-    title: parsed.title ?? 'My Video',
+  const fallback = () => ({
+    title: 'True Crime Story',
     scenes: raw.map((r, i) => ({
       id: `scene-${i + 1}`,
       index: i,
@@ -68,34 +70,41 @@ ${sceneList}`
       startSeconds: r.startSeconds,
       endSeconds: r.endSeconds,
       durationSeconds: r.endSeconds - r.startSeconds,
-      visualDescription: parsed.scenes[i]?.visualDescription ?? r.narration,
+      visualDescription: r.narration,
     })),
-  };
+  });
+
+  try {
+    const result = await withGeminiRetry(() =>
+      getModel().generateContent(
+        `You are a video director. For each scene write a specific visual description for b-roll stock footage search. Also give a short punchy video title.\n\nReturn ONLY valid JSON (no markdown):\n{\n  "title": "short punchy title",\n  "scenes": [\n    { "index": 0, "visualDescription": "specific b-roll description e.g. \'detective examining crime scene photos on dark desk\'" }\n  ]\n}\n\nScenes:\n${sceneList}`
+      )
+    );
+
+    const parsed = JSON.parse(cleanJson(result.response.text()));
+    return {
+      title: parsed.title ?? 'True Crime Story',
+      scenes: raw.map((r, i) => ({
+        id: `scene-${i + 1}`,
+        index: i,
+        narration: r.narration,
+        startSeconds: r.startSeconds,
+        endSeconds: r.endSeconds,
+        durationSeconds: r.endSeconds - r.startSeconds,
+        visualDescription: parsed.scenes[i]?.visualDescription ?? r.narration,
+      })),
+    };
+  } catch (err: any) {
+    console.log('   ⚠️  Gemini unavailable — using narration as visual description');
+    return fallback();
+  }
 }
 
 async function parsePlainScript(scriptText: string): Promise<ParsedScript> {
-  const result = await getModel().generateContent(
-    `Parse this script into scenes. Estimate timing at ~130 words per minute.
-
-Return ONLY valid JSON (no markdown):
-{
-  "title": "video title",
-  "scenes": [
-    {
-      "id": "scene-1",
-      "index": 0,
-      "narration": "text",
-      "startSeconds": 0,
-      "endSeconds": 8,
-      "durationSeconds": 8,
-      "visualDescription": "specific b-roll description for stock footage"
-    }
-  ],
-  "totalDurationSeconds": 60
-}
-
-Script:
-${scriptText}`
+  const result = await withGeminiRetry(() =>
+    getModel().generateContent(
+      `Parse this script into scenes. Estimate timing at ~130 words per minute.\n\nReturn ONLY valid JSON (no markdown):\n{\n  "title": "video title",\n  "scenes": [\n    {\n      "id": "scene-1",\n      "index": 0,\n      "narration": "text",\n      "startSeconds": 0,\n      "endSeconds": 8,\n      "durationSeconds": 8,\n      "visualDescription": "specific b-roll description for stock footage"\n    }\n  ],\n  "totalDurationSeconds": 60\n}\n\nScript:\n${scriptText}`
+    )
   );
   return JSON.parse(cleanJson(result.response.text())) as ParsedScript;
 }
