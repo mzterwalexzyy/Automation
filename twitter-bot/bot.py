@@ -1,9 +1,6 @@
 import tweepy
-import time
 import os
-import json
 import random
-from datetime import datetime
 from dotenv import load_dotenv
 from config import REPLY_TEMPLATES, TARGET_USERNAME
 
@@ -18,66 +15,54 @@ client = tweepy.Client(
     wait_on_rate_limit=True,
 )
 
-REPLIED_IDS_FILE = os.path.join(os.path.dirname(__file__), "replied_ids.json")
-POLL_INTERVAL = 120  # seconds between checks
 
-
-def load_replied_ids():
-    if os.path.exists(REPLIED_IDS_FILE):
-        with open(REPLIED_IDS_FILE) as f:
-            return set(json.load(f))
-    return set()
-
-
-def save_replied_ids(ids):
-    with open(REPLIED_IDS_FILE, "w") as f:
-        json.dump(list(ids), f)
+def set_gha_output(key: str, value: str):
+    """Passes a value back to the GitHub Actions workflow."""
+    output_file = os.getenv("GITHUB_OUTPUT")
+    if output_file:
+        with open(output_file, "a") as f:
+            f.write(f"{key}={value}\n")
+    else:
+        print(f"[local] output: {key}={value}")
 
 
 def get_user_id(username: str) -> str:
     resp = client.get_user(username=username)
     if not resp.data:
-        raise ValueError(f"User @{username} not found — check the username in config.py")
+        raise ValueError(f"User @{username} not found — check TARGET_USERNAME in config.py")
     return str(resp.data.id)
 
 
-def get_recent_tweets(user_id: str, since_id=None):
+def run():
+    since_id = os.getenv("LAST_TWEET_ID") or None
+    user_id = get_user_id(TARGET_USERNAME)
+
     kwargs = {"max_results": 5, "tweet_fields": ["created_at", "text"]}
     if since_id:
         kwargs["since_id"] = since_id
+        print(f"Checking for tweets from @{TARGET_USERNAME} newer than {since_id}")
+    else:
+        print(f"First run — initialising checkpoint (no replies sent yet)")
+
     resp = client.get_users_tweets(user_id, **kwargs)
-    return resp.data or []
+    tweets = resp.data or []
 
+    if not tweets:
+        print("No new tweets found.")
+        return
 
-def run():
-    print(f"Bot started — watching @{TARGET_USERNAME}")
-    replied_ids = load_replied_ids()
-    user_id = get_user_id(TARGET_USERNAME)
-    print(f"Resolved @{TARGET_USERNAME} -> user_id={user_id}")
-    since_id = None
+    newest_id = str(tweets[0].id)
 
-    while True:
-        try:
-            tweets = get_recent_tweets(user_id, since_id=since_id)
-            for tweet in reversed(tweets):  # oldest first
-                tid = str(tweet.id)
-                if tid not in replied_ids:
-                    reply = random.choice(REPLY_TEMPLATES)
-                    client.create_tweet(text=reply, in_reply_to_tweet_id=tweet.id)
-                    print(f"[{datetime.now():%H:%M:%S}] Replied to {tid}: {reply[:80]}")
-                    replied_ids.add(tid)
-                    save_replied_ids(replied_ids)
-                    time.sleep(5)  # brief pause between consecutive replies
-            if tweets:
-                since_id = tweets[0].id
-        except tweepy.TooManyRequests:
-            print("Rate limited — sleeping 15 min")
-            time.sleep(900)
-        except Exception as exc:
-            print(f"[{datetime.now():%H:%M:%S}] Error: {exc}")
+    if since_id:
+        for tweet in reversed(tweets):  # oldest first so replies are in order
+            reply = random.choice(REPLY_TEMPLATES)
+            client.create_tweet(text=reply, in_reply_to_tweet_id=tweet.id)
+            print(f"Replied to tweet {tweet.id}")
+    else:
+        # First run: record checkpoint without replying to old tweets
+        print(f"Checkpoint set to {newest_id}. Future tweets will trigger replies.")
 
-        print(f"[{datetime.now():%H:%M:%S}] Next check in {POLL_INTERVAL}s")
-        time.sleep(POLL_INTERVAL)
+    set_gha_output("last_tweet_id", newest_id)
 
 
 if __name__ == "__main__":

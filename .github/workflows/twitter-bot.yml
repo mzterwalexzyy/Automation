@@ -1,0 +1,43 @@
+name: Twitter Auto-Reply Bot
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # every 5 minutes, 24/7
+  workflow_dispatch:         # manual trigger for testing
+
+jobs:
+  reply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write          # needed to update LAST_TWEET_ID variable
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'twitter-bot/requirements.txt'
+
+      - name: Install dependencies
+        run: pip install -r twitter-bot/requirements.txt
+
+      - name: Run bot
+        id: bot
+        env:
+          TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
+          TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
+          TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
+          TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+          TWITTER_ACCESS_TOKEN_SECRET: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
+          LAST_TWEET_ID: ${{ vars.LAST_TWEET_ID }}
+        run: python twitter-bot/bot.py
+
+      - name: Save last tweet ID
+        if: steps.bot.outputs.last_tweet_id != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LAST_ID: ${{ steps.bot.outputs.last_tweet_id }}
+        run: gh variable set LAST_TWEET_ID --body "$LAST_ID"
