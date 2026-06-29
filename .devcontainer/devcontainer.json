@@ -1,0 +1,20 @@
+{
+  "name": "Twitter Auto-Reply Bot",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "postCreateCommand": "pip install -r twitter-bot/requirements.txt",
+  "remoteEnv": {
+    "TWITTER_BEARER_TOKEN": "${localEnv:TWITTER_BEARER_TOKEN}",
+    "TWITTER_API_KEY": "${localEnv:TWITTER_API_KEY}",
+    "TWITTER_API_SECRET": "${localEnv:TWITTER_API_SECRET}",
+    "TWITTER_ACCESS_TOKEN": "${localEnv:TWITTER_ACCESS_TOKEN}",
+    "TWITTER_ACCESS_TOKEN_SECRET": "${localEnv:TWITTER_ACCESS_TOKEN_SECRET}"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python"],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python"
+      }
+    }
+  }
+}
